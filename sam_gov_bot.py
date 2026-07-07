@@ -124,10 +124,14 @@ def save_seen_ids(seen_ids):
         json.dump(sorted(seen_ids), f, indent=2)
 
 
+MAX_PAGES_PER_PSC = 5  # safety cap: 5 pages x 100 = max 500 records per PSC code per run
+
+
 def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
-    """Fetch all pages of opportunities for a single PSC code."""
+    """Fetch pages of opportunities for a single PSC code, capped at MAX_PAGES_PER_PSC."""
     all_records = []
     offset = 0
+    page_count = 0
 
     while True:
         params = {
@@ -142,16 +146,28 @@ def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
         resp = requests.get(BASE_URL, params=params, timeout=30)
 
         if resp.status_code == 429:
-            print(f"Rate limited on PSC {psc_code}. Stopping for this run.")
+            print(f"Rate limited on PSC {psc_code}. Stopping for this run.", flush=True)
             break
         resp.raise_for_status()
 
         data = resp.json()
         records = data.get("opportunitiesData", [])
         all_records.extend(records)
+        page_count += 1
 
         total = data.get("totalRecords", 0)
         offset += RESULTS_PER_PAGE
+
+        if page_count >= MAX_PAGES_PER_PSC:
+            print(
+                f"  PSC {psc_code}: hit page cap ({MAX_PAGES_PER_PSC} pages / "
+                f"{page_count * RESULTS_PER_PAGE} records) out of {total} total. "
+                f"Some results skipped this run -- consider narrowing PSC_CODES "
+                f"or reducing LOOKBACK_DAYS if this happens often.",
+                flush=True,
+            )
+            break
+
         if offset >= total or not records:
             break
         time.sleep(1)  # be polite between paged requests
@@ -173,12 +189,13 @@ def run_scan():
     new_matches = []
 
     for psc in PSC_CODES:
-        print(f"Querying PSC {psc} ({posted_from_str} - {posted_to_str})...")
+       print(f"Querying PSC {psc} ({posted_from_str} - {posted_to_str})...", flush=True)
         try:
             records = fetch_opportunities_for_psc(psc, posted_from_str, posted_to_str)
         except requests.HTTPError as e:
-            print(f"  Error fetching PSC {psc}: {e}")
+            print(f"  Error fetching PSC {psc}: {e}", flush=True)
             continue
+        print(f"  -> {len(records)} record(s) fetched for PSC {psc}", flush=True)
 
         for opp in records:
             notice_id = opp.get("noticeId")
