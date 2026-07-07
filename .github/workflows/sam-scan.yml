@@ -1,0 +1,45 @@
+name: SAM.gov Opportunity Scan
+
+on:
+  schedule:
+    # Runs daily at 12:00 UTC (~7am US Eastern, ~4am US Pacific).
+    # Adjust the cron time as you like: https://crontab.guru
+    - cron: "0 12 * * *"
+  workflow_dispatch: {}  # lets you trigger a manual run from the Actions tab
+
+# Needed so the workflow can commit seen_notices.json back to the repo
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run SAM.gov scan
+        env:
+          SAM_API_KEY: ${{ secrets.SAM_API_KEY }}
+          SMTP_SERVER: ${{ secrets.SMTP_SERVER }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: python3 sam_gov_bot.py
+
+      - name: Commit updated seen_notices.json
+        run: |
+          git config user.name "sam-gov-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add seen_notices.json
+          git diff --quiet --cached || git commit -m "Update seen notices [skip ci]"
+          git push
