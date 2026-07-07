@@ -189,7 +189,7 @@ def run_scan():
     new_matches = []
 
     for psc in PSC_CODES:
-       print(f"Querying PSC {psc} ({posted_from_str} - {posted_to_str})...", flush=True)
+        print(f"Querying PSC {psc} ({posted_from_str} - {posted_to_str})...", flush=True)
         try:
             records = fetch_opportunities_for_psc(psc, posted_from_str, posted_to_str)
         except requests.HTTPError as e:
@@ -211,8 +211,7 @@ def run_scan():
 
     save_seen_ids(seen_ids)
     return new_matches
-
-
+   
 def format_email_body(matches):
     if not matches:
         return None
