@@ -125,10 +125,14 @@ def save_seen_ids(seen_ids):
 
 
 MAX_PAGES_PER_PSC = 5  # safety cap: 5 pages x 100 = max 500 records per PSC code per run
+MAX_RETRIES = 3        # retries per page on timeout/connection error
+REQUEST_TIMEOUT = 45   # seconds
 
 
 def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
-    """Fetch pages of opportunities for a single PSC code, capped at MAX_PAGES_PER_PSC."""
+    """Fetch pages of opportunities for a single PSC code, capped at MAX_PAGES_PER_PSC.
+    Retries transient network errors (timeouts, connection resets) a few times
+    before giving up on that page."""
     all_records = []
     offset = 0
     page_count = 0
@@ -143,7 +147,25 @@ def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
             "ptype": NOTICE_TYPES,
             "classificationCode": psc_code,
         }
-        resp = requests.get(BASE_URL, params=params, timeout=30)
+
+        resp = None
+        last_error = None
+        for attempt in range(1, MAX_RETRIES + 1):
+            try:
+                resp = requests.get(BASE_URL, params=params, timeout=REQUEST_TIMEOUT)
+                break
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                last_error = e
+                print(
+                    f"  PSC {psc_code}: network error on attempt {attempt}/{MAX_RETRIES} "
+                    f"({e.__class__.__name__}). Retrying...",
+                    flush=True,
+                )
+                time.sleep(3 * attempt)  # back off a bit longer each retry
+
+        if resp is None:
+            print(f"  PSC {psc_code}: giving up after {MAX_RETRIES} attempts, skipping.", flush=True)
+            raise last_error
 
         if resp.status_code == 429:
             print(f"Rate limited on PSC {psc_code}. Stopping for this run.", flush=True)
@@ -173,7 +195,6 @@ def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
         time.sleep(1)  # be polite between paged requests
 
     return all_records
-
 
 def matches_set_aside(opp):
     return opp.get("typeOfSetAside") in SET_ASIDE_CODES
