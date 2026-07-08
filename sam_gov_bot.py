@@ -84,15 +84,19 @@ NOTICE_TYPES = ["p", "k", "o"]
 # doesn't reliably filter by this server-side). Edit freely; full PSC manual:
 # https://www.acquisition.gov/psc-manual
 PSC_CODES = [
+    "34",  # Metalworking machinery
+    "35",  # Service and trade equipment
+    "36",  # Special industry machinery
+    "39",  # Materials handling equipment
+    "41",  # Refrigeration / AC equipment
+    "63",  # Security / detection systems
+    "65",  # Medical / dental / vet equipment
+    "66",  # Instruments / lab equipment
+    "67",  # Photographic / video equipment
     "71",  # Furniture
-    "72",  # Household & Commercial Furnishings/Appliances
-    "73",  # Food Prep & Serving Equipment
-    "75",  # Office Supplies & Devices
-    "78",  # Recreational & Athletic Equipment
-    "79",  # Cleaning Equipment & Supplies
-    "80",  # Brushes, Paints, Sealers & Adhesives
-    "84",  # Clothing, Textiles & Individual Equipment
-    "87",  # Agricultural Supplies
+    "72",  # Household / commercial furnishings
+    "73",  # Food prep / serving equipment
+    "74",  # Office machines / business equipment
 ]
 
 # Small-business set-aside codes (this is what makes these "low hanging" --
