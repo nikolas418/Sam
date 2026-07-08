@@ -34,8 +34,8 @@ RATE LIMITS
 -----------
 Public API: 10 requests/day (unregistered use of the key beyond basic tier)
 Registered/verified accounts: 1,000 requests/day
-This script uses 1 request per PSC code per run (with pagination if needed),
-so keep the PSC_CODES list reasonably small if you're on the 10/day tier.
+This version fetches once broadly (not per PSC code) using a 1000-record
+page size, so a typical run only needs 1-3 requests total.
 """
 
 import os
@@ -79,8 +79,9 @@ MIN_HOURS_UNTIL_DEADLINE = 36
 NOTICE_TYPES = ["p", "k", "o"]
 
 # PSC (Product/Service Classification) codes -- these are the FSC "supply
-# group" prefixes for general supplies/equipment. Edit freely; SAM.gov's PSC
-# manual has the full list if you want to narrow further:
+# group" prefixes for general supplies/equipment. Used as a CLIENT-SIDE
+# filter against each opportunity's actual classificationCode (SAM.gov's API
+# doesn't reliably filter by this server-side). Edit freely; full PSC manual:
 # https://www.acquisition.gov/psc-manual
 PSC_CODES = [
     "71",  # Furniture
@@ -112,10 +113,10 @@ SET_ASIDE_CODES = [
     "EDWOSBSS", # EDWOSB Sole Source
 ]
 
-MAX_PAGES_PER_PSC = 5  # safety cap: 5 pages x 100 = max 500 records per PSC code per run
-MAX_RETRIES = 3        # retries per page on timeout/connection error
-REQUEST_TIMEOUT = 45   # seconds
-RESULTS_PER_PAGE = 100  # API max per page is generally 1000, but keep modest
+MAX_PAGES = 10          # safety cap: 10 pages x 1000 = max 10,000 records per run
+MAX_RETRIES = 3         # retries per page on timeout/connection error
+REQUEST_TIMEOUT = 45    # seconds
+RESULTS_PER_PAGE = 1000  # SAM.gov's API max per page -- big page size means fewer requests
 SEEN_FILE = "seen_notices.json"
 PDF_PATH = "sam_gov_opportunities.pdf"
 
@@ -143,10 +144,14 @@ def save_seen_ids(seen_ids):
         json.dump(sorted(seen_ids), f, indent=2)
 
 
-def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
-    """Fetch pages of opportunities for a single PSC code, capped at MAX_PAGES_PER_PSC.
-    Retries transient network errors (timeouts, connection resets) a few times
-    before giving up on that page."""
+def fetch_all_opportunities(posted_from, posted_to):
+    """Fetch all opportunities in the date range matching NOTICE_TYPES.
+
+    NOTE: SAM.gov's classificationCode query parameter does not reliably
+    filter server-side (confirmed: querying different PSC codes returned
+    identical totalRecords counts). So we no longer query per-PSC-code --
+    we fetch the whole pool once here, and matches_psc() filters it
+    client-side afterward instead. This also cuts API calls roughly 9x."""
     all_records = []
     offset = 0
     page_count = 0
@@ -159,7 +164,6 @@ def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
             "limit": RESULTS_PER_PAGE,
             "offset": offset,
             "ptype": NOTICE_TYPES,
-            "classificationCode": psc_code,
         }
 
         resp = None
@@ -171,18 +175,18 @@ def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
             except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
                 last_error = e
                 print(
-                    f"  PSC {psc_code}: network error on attempt {attempt}/{MAX_RETRIES} "
+                    f"  Network error on attempt {attempt}/{MAX_RETRIES} "
                     f"({e.__class__.__name__}). Retrying...",
                     flush=True,
                 )
                 time.sleep(3 * attempt)  # back off a bit longer each retry
 
         if resp is None:
-            print(f"  PSC {psc_code}: giving up after {MAX_RETRIES} attempts, skipping.", flush=True)
+            print(f"  Giving up after {MAX_RETRIES} attempts on this page.", flush=True)
             raise last_error
 
         if resp.status_code == 429:
-            print(f"Rate limited on PSC {psc_code}. Stopping for this run.", flush=True)
+            print("Rate limited. Stopping for this run.", flush=True)
             break
         resp.raise_for_status()
 
@@ -193,13 +197,13 @@ def fetch_opportunities_for_psc(psc_code, posted_from, posted_to):
 
         total = data.get("totalRecords", 0)
         offset += RESULTS_PER_PAGE
+        print(f"  Fetched page {page_count}: {len(records)} record(s) ({len(all_records)} of {total} total so far)", flush=True)
 
-        if page_count >= MAX_PAGES_PER_PSC:
+        if page_count >= MAX_PAGES:
             print(
-                f"  PSC {psc_code}: hit page cap ({MAX_PAGES_PER_PSC} pages / "
-                f"{page_count * RESULTS_PER_PAGE} records) out of {total} total. "
-                f"Some results skipped this run -- consider narrowing PSC_CODES "
-                f"or reducing LOOKBACK_DAYS if this happens often.",
+                f"  Hit page cap ({MAX_PAGES} pages / {page_count * RESULTS_PER_PAGE} records) "
+                f"out of {total} total. Some results skipped this run -- consider raising "
+                f"MAX_PAGES or reducing LOOKBACK_DAYS if this happens often.",
                 flush=True,
             )
             break
@@ -279,32 +283,29 @@ def run_scan():
     seen_ids = load_seen_ids()
     new_matches = []
 
-    for psc in PSC_CODES:
-        print(f"Querying PSC {psc} ({posted_from_str} - {posted_to_str})...", flush=True)
-        try:
-            records = fetch_opportunities_for_psc(psc, posted_from_str, posted_to_str)
-        except requests.exceptions.RequestException as e:
-            print(f"  Error fetching PSC {psc}: {e}", flush=True)
+    print(f"Querying SAM.gov ({posted_from_str} - {posted_to_str})...", flush=True)
+    try:
+        records = fetch_all_opportunities(posted_from_str, posted_to_str)
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching opportunities: {e}", flush=True)
+        records = []
+    print(f"Fetched {len(records)} total raw record(s) from SAM.gov.", flush=True)
+
+    for opp in records:
+        notice_id = opp.get("noticeId")
+        if not notice_id or notice_id in seen_ids:
             continue
-        print(f"  -> {len(records)} record(s) fetched for PSC {psc}", flush=True)
+        if not matches_set_aside(opp):
+            continue
+        if not matches_psc(opp):
+            continue
+        if not passes_keyword_filter(opp):
+            continue
+        if not passes_deadline_filter(opp):
+            continue
 
-        for opp in records:
-            notice_id = opp.get("noticeId")
-            if not notice_id or notice_id in seen_ids:
-                continue
-            if not matches_set_aside(opp):
-                continue
-            if not matches_psc(opp):
-                continue
-            if not passes_keyword_filter(opp):
-                continue
-            if not passes_deadline_filter(opp):
-                continue
-
-            new_matches.append(opp)
-            seen_ids.add(notice_id)
-
-        time.sleep(1)  # be polite between PSC codes
+        new_matches.append(opp)
+        seen_ids.add(notice_id)
 
     save_seen_ids(seen_ids)
     return new_matches
