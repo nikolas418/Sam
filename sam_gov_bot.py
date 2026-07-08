@@ -85,6 +85,7 @@ NOTICE_TYPES = ["p", "k", "o"]
 # https://www.acquisition.gov/psc-manual
 PSC_CODES = [
     "34",  # Metalworking machinery
+   "3695",  # Miscellaneous special industry machinery
     "35",  # Service and trade equipment
     "36",  # Special industry machinery
     "39",  # Materials handling equipment
@@ -174,14 +175,14 @@ def fetch_all_opportunities(posted_from, posted_to):
 
     while True:
         params = {
-            "api_key": API_KEY,
-            "postedFrom": posted_from,
-            "postedTo": posted_to,
-            "limit": RESULTS_PER_PAGE,
-            "offset": offset,
-            "ptype": NOTICE_TYPES,
-        }
-
+    "api_key": SAM_API_KEY,
+    "postedFrom": posted_from,
+    "postedTo": posted_to,
+    "ccode": psc_code,
+    "ptype": notice_type,
+    "limit": 100,
+    "offset": offset,
+}
         resp = None
         last_error = None
         for attempt in range(1, MAX_RETRIES + 1):
