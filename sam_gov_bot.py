@@ -98,7 +98,19 @@ PSC_CODES = [
     "73",  # Food prep / serving equipment
     "74",  # Office machines / business equipment
 ]
-
+AVOID_PSC_CODES = [
+    "J",   # Maintenance / repair / rebuild of equipment
+    "R",   # Professional services
+    "S",   # Utilities / housekeeping / grounds services
+    "Y",   # Construction
+    "Z",   # Maintenance / repair of real property
+    "53",  # Hardware / fasteners
+    "59",  # Electrical components
+    "61",  # Electric wire / power distribution equipment
+    "47",  # Pipe / tubing / hose
+    "28",  # Engines / turbines / components
+    "29",  # Engine accessories
+]
 # Small-business set-aside codes (this is what makes these "low hanging" --
 # less competition from large primes). Full list of codes is in the SAM.gov
 # API docs; these are the common ones.
