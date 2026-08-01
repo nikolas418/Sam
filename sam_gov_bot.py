@@ -1,4 +1,3 @@
-
 import os
 import sys
 import json
@@ -9,7 +8,6 @@ from dateutil import parser as date_parser
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
 
 # ---------------------------------------------------------------------------
 # CONFIGURATION & LOOSENED PARAMETERS
@@ -110,7 +108,6 @@ def fetch_sam_notices(days_back=7):
 
 def evaluate_notice(notice, now_utc):
     title = notice.get("title", "No Title").strip()
-    notice_id = notice.get("noticeId", notice.get("solicitationNumber", "UNKNOWN"))
     desc = notice.get("description", "") or ""
 
     # 1. Deadline Check
@@ -148,7 +145,8 @@ def evaluate_notice(notice, now_utc):
 # EMAIL & REPORTING
 # ---------------------------------------------------------------------------
 def send_email_digest(strong_matches, conditional_matches):
-    if not ALL_NOTICES_TO_REPORT := (strong_matches + conditional_matches):
+    all_notices_to_report = strong_matches + conditional_matches
+    if not all_notices_to_report:
         print("No qualified notices to report.")
         return
 
@@ -157,13 +155,13 @@ def send_email_digest(strong_matches, conditional_matches):
         return
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"SAM.gov Opportunity Alert: {len(ALL_NOTICES_TO_REPORT)} Qualified Items"
+    msg["Subject"] = f"SAM.gov Opportunity Alert: {len(all_notices_to_report)} Qualified Items"
     msg["From"] = SMTP_USER
     msg["To"] = EMAIL_TO
 
     html_lines = [
         "<h2>SAM.gov Opportunity Scan Results</h2>",
-        f"<p><strong>Total Approved Opportunities:</strong> {len(ALL_NOTICES_TO_REPORT)}</p>",
+        f"<p><strong>Total Approved Opportunities:</strong> {len(all_notices_to_report)}</p>",
         "<hr/>"
     ]
 
